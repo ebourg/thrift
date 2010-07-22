@@ -1,0 +1,379 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements. See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership. The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.thrift;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.thrift.annotation.ThriftField;
+import org.apache.thrift.annotation.ThriftStruct;
+import org.apache.thrift.protocol.TField;
+import org.apache.thrift.protocol.TList;
+import org.apache.thrift.protocol.TMap;
+import org.apache.thrift.protocol.TProtocol;
+import org.apache.thrift.protocol.TProtocolUtil;
+import org.apache.thrift.protocol.TSet;
+import org.apache.thrift.protocol.TStruct;
+import org.apache.thrift.protocol.TType;
+
+/**
+ * Generic serializer and deserializer based on Java annotations. 
+ * 
+ * @author Emmanuel Bourg
+ * @version $Revision$, $Date$
+ */
+public class ThriftUtils {
+
+    /**
+     * Deserializes an object using the specified protocol.
+     * 
+     * @param iprot  the input protocol
+     * @param cls    the class of the object
+     * @throws TException
+     */
+    public static Object read(TProtocol iprot, Class cls) throws TException {
+        try {
+            if (String.class.equals(cls)) {
+                return iprot.readString();
+            } else if (Number.class.isAssignableFrom(cls)) {
+                if (Byte.class.equals(cls)) {
+                    return iprot.readByte();
+                } else if (Short.class.equals(cls)) {
+                    return iprot.readI16();
+                } else if (Integer.class.equals(cls)) {
+                    return iprot.readI32();
+                } else if (Long.class.equals(cls)) {
+                    return iprot.readI64();
+                } else if (Double.class.equals(cls)) {
+                    return iprot.readDouble();
+                } else {
+                    throw new RuntimeException("Unsupported type: " + cls);
+                }
+            } else if (Boolean.class.equals(cls)) {
+                return iprot.readBool();
+            } else {
+                Object obj = cls.newInstance();
+                read(iprot, obj);
+                return obj;
+            }
+        } catch (Exception e) {
+            throw new TException(e);
+        }
+    }
+    
+    /**
+     * Deserializes a Thrift struct using the specified protocol.
+     * 
+     * @param iprot   the input protocol
+     * @param object  the object to serialize
+     * @throws TException
+     */
+    public static <T> void read(TProtocol iprot, T object) throws TException {
+        iprot.readStructBegin();
+        
+        Map<Short, Field> fields = new HashMap<Short, Field>();
+        for (Field field : object.getClass().getFields()) {
+            ThriftField desc = field.getAnnotation(ThriftField.class);
+            if (desc != null) {
+                fields.put(desc.id(), field);
+            }
+        }
+
+        while (true) {
+            TField field = iprot.readFieldBegin();
+            if (field.type == TType.STOP) {
+                break;
+            }
+
+            if (!fields.keySet().contains(field.id)) {
+                TProtocolUtil.skip(iprot, field.type);
+                continue;
+            }
+
+            try {
+                Object value;
+                
+                Field f = fields.get(field.id);
+
+                switch (field.type) {
+                    case TType.BOOL:
+                        value = iprot.readBool();
+                        break;
+                    case TType.BYTE:
+                        value = iprot.readByte();
+                        break;
+                    case TType.DOUBLE:
+                        value = iprot.readDouble();
+                        break;
+                    case TType.I16:
+                        value = iprot.readI16();
+                        break;
+                    case TType.I32:
+                        value = iprot.readI32();
+                        
+                        // detect enums
+                        if (f.getType().isEnum()) {
+                            Method findByValue = f.getType().getMethod("findByValue", int.class);
+                            value = findByValue.invoke(null, value);
+                        }                        
+                        break;
+                    
+                    case TType.I64:
+                        value = iprot.readI64();
+                        break;
+                    case TType.STRING:
+                        value = iprot.readString();
+                        break;
+                    
+                    case TType.STRUCT:
+                        value = read(iprot, f.getType());
+                        break;
+                    
+                    case TType.MAP:
+                        Class keyClass = (Class) ((ParameterizedType) f.getGenericType()).getActualTypeArguments()[0];
+                        Class valueClass = (Class) ((ParameterizedType) f.getGenericType()).getActualTypeArguments()[1];
+                        
+                        TMap tmap = iprot.readMapBegin();
+                        Map map = new HashMap(tmap.size);
+                        for (int i = 0; i < tmap.size; ++i) {
+                            Object key = read(iprot, keyClass);
+                            Object val = read(iprot, valueClass);
+
+                            map.put(key, val);
+                        }
+                        iprot.readMapEnd();
+                        
+                        value= map;
+                        break;
+                        
+                    case TType.SET:
+                        Class elementClass = (Class) ((ParameterizedType) f.getGenericType()).getActualTypeArguments()[0];
+                        
+                        TSet tset = iprot.readSetBegin();
+                        Set set = new HashSet(tset.size);
+                        
+                        for (int i = 0; i < tset.size; ++i) {
+                            set.add(read(iprot, elementClass));
+                        }
+                        
+                        iprot.readSetEnd();
+                        
+                        value = set;
+                        break;
+                        
+                    case TType.LIST:
+                        Class cls = (Class) ((ParameterizedType) f.getGenericType()).getActualTypeArguments()[0];
+                        
+                        TList tlist = iprot.readListBegin();
+                        List list = new ArrayList(tlist.size);
+                        
+                        for (int i = 0; i < tlist.size; ++i) {
+                            list.add(read(iprot, cls));
+                        }
+                        
+                        iprot.readListEnd();
+                        
+                        value = list;
+                        break;
+
+                    case TType.ENUM:                        
+                        // doesn't happen, enums are transported as integers (i32)
+                        
+                    case TType.VOID:
+                    default:
+                        throw new TException("Unsupported type: " + field);
+                }
+                
+                f.set(object, value);
+                
+            } catch (TException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new TException(e);
+            }
+        }
+        
+        iprot.readStructEnd();
+    }
+
+    /**
+     * Serializes a Thrift struct using the specified protocol.
+     * 
+     * @param oprot   the output protocol
+     * @param object  the object to serialize
+     * @throws TException
+     */
+    public static void write(TProtocol oprot, Object object) throws TException {
+        try {
+            ThriftStruct struct = object.getClass().getAnnotation(ThriftStruct.class);
+            if (struct == null) {
+                throw new IllegalArgumentException("Object is not a Thrift struct: " + object);
+            }
+            
+            oprot.writeStructBegin(new TStruct(struct.value()));
+
+            for (Field field : object.getClass().getFields()) {
+                ThriftField desc = field.getAnnotation(ThriftField.class);
+                if (desc != null) {
+                    Object value = field.get(object);
+                    if (value != null) {
+                        oprot.writeFieldBegin(new TField(desc.name(), desc.type(), desc.id()));
+                        switch (desc.type()) {
+                            case TType.BOOL:
+                                oprot.writeBool((Boolean) value);
+                                break;
+                            case TType.BYTE:
+                                oprot.writeByte((Byte) value);
+                                break;
+                            case TType.DOUBLE:
+                                oprot.writeDouble((Double) value);
+                                break;
+                            case TType.I16:
+                                oprot.writeI16((Short) value);
+                                break;
+                            case TType.I32:
+                                // handle enums
+                                if (field.getType().isEnum()) {
+                                    Method getValue = field.getType().getMethod("getValue");
+                                    oprot.writeI32((Integer) getValue.invoke(value));
+                                }
+
+                                oprot.writeI32((Integer) value);
+                                break;
+                            case TType.I64:
+                                oprot.writeI64((Long) value);
+                                break;
+                            case TType.STRING:
+                                oprot.writeString((String) value);
+                                break;
+
+                            case TType.STRUCT:
+                                write(oprot, value);
+                                break;
+
+                            case TType.MAP:
+                                Map map = (Map) value;
+                                Class keyClass = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
+                                Class valueClass = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[1];
+
+                                TMap tmap = new TMap(getThiftType(keyClass), getThiftType(valueClass), map.size());
+                                oprot.writeMapBegin(tmap);
+                                Set<Map.Entry> keyset = map.keySet();
+                                for (Map.Entry entry : keyset) {
+                                    // todo support non struct types
+                                    write(oprot, entry.getKey());
+                                    write(oprot, entry.getValue());
+                                }
+                                
+                                oprot.writeMapEnd();
+                                break;
+
+                            case TType.SET:
+                                Set set = (Set) value;
+                                Class elementClass = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
+
+                                TSet tset = new TSet(getThiftType(elementClass), set.size());
+                                oprot.writeSetBegin(tset);
+                                
+                                for (Object element : set) {
+                                    write(oprot, element); // todo support non struct types
+                                }
+
+                                oprot.writeSetEnd();
+                                break;
+
+                            case TType.LIST:
+                                List list = (List) value;
+                                Class cls = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
+
+                                TList tlist = new TList(getThiftType(cls), list.size());
+                                oprot.writeListBegin(tlist);
+
+                                for (Object element : list) {
+                                    write(oprot, element); // todo support non struct types
+                                }
+
+                                oprot.writeListEnd();
+                                break;
+
+                            case TType.ENUM:
+                                // doesn't happen, enums are transported as integers (i32)
+
+                            case TType.VOID:
+                            default:
+                                throw new TException("Unsupported type: " + field);
+                        }
+
+
+                        oprot.writeFieldEnd();
+                    }
+                }
+            }
+
+            oprot.writeFieldStop();
+            oprot.writeStructEnd();
+
+        } catch (Exception e) {
+            throw new TException(e);
+        }
+    }
+
+    /**
+     * Returns the Thrift type (TType) equivalent to the specified class.
+     * 
+     * @param cls
+     */
+    public static byte getThiftType(Class cls) {
+        if (String.class.equals(cls)) {
+            return TType.STRING;
+        } else if (Number.class.isAssignableFrom(cls)) {
+            if (Byte.class.equals(cls)) {
+                return  TType.BYTE;
+            } else if (Short.class.equals(cls)) {
+                return  TType.I16;
+            } else if (Integer.class.equals(cls)) {
+                return  TType.I32;
+            } else if (Long.class.equals(cls)) {
+                return  TType.I64;
+            } else if (Double.class.equals(cls)) {
+                return  TType.DOUBLE;
+            } else {
+                throw new IllegalArgumentException("Unsupported type: " + cls);
+            }
+        } else if (Boolean.class.equals(cls)) {
+            return  TType.BOOL;
+        } else if (Map.class.isAssignableFrom(cls)) {
+            return TType.MAP;
+        } else if (Set.class.isAssignableFrom(cls)) {
+            return TType.SET;
+        } else if (List.class.isAssignableFrom(cls)) {
+            return TType.LIST;
+        } else {
+            return TType.STRUCT;
+        }
+    }
+}
