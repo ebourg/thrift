@@ -56,7 +56,7 @@
     <path refid="compile.classpath" />
     <pathelement path="${env.CLASSPATH}" />
     <pathelement location="build/test" />
-    <pathelement location="libthrift.jar" />
+    <pathelement location="libthrift-0.2.jar" />
   </path>
 
   <target name="init">
@@ -111,7 +111,13 @@
   </target>
 
   <target name="compile" depends="init,resolve">
-    <javac srcdir="${src}" destdir="${build}" source="1.5" target="1.5" debug="true" classpathref="compile.classpath" />
+    <mkdir dir="${build}/main"/>
+    <javac srcdir="${src}" destdir="${build}/main" source="1.5" target="1.5" debug="true" classpathref="compile.classpath" />
+    
+    <mkdir dir="${build}/ext"/>
+    <javac srcdir="ext" destdir="${build}/ext" source="1.5" target="1.5" debug="true" classpathref="compile.classpath">
+      <classpath path="${build}/main"/>
+    </javac>
   </target>
 
   <target name="javadoc" depends="init">
@@ -125,15 +131,16 @@
 
   <target name="dist" depends="compile">
     <mkdir dir="${build}/META-INF"/>
-    <copy file="${thrift.root}/LICENSE" tofile="${build}/META-INF/LICENSE.txt"/>
     <copy file="${thrift.root}/NOTICE" tofile="${build}/META-INF/NOTICE.txt"/>
-    <jar jarfile="libthrift.jar">
-      <fileset dir="${build}">
+    <jar jarfile="libthrift-0.2.jar">
+      <fileset dir="${build}/main">
         <include name="**/*.class" />
         <include name="META-INF/*.txt" />
       </fileset>
-      <fileset dir="src">
-        <include name="**/*.java" />
+    </jar>
+    <jar jarfile="libthrift-ext-0.2.jar">
+      <fileset dir="${build}/ext">
+        <include name="**/*.class" />
       </fileset>
     </jar>
   </target>
@@ -154,7 +161,7 @@
     <delete dir="${gen}"/>
     <delete dir="${genbean}"/>
     <delete dir="${javadoc}"/>
-    <delete file="libthrift.jar" />
+    <delete file="libthrift*.jar" />
   </target>
 
   <target name="compile-test" description="Build the test suite classes" depends="generate,dist">
