@@ -313,11 +313,7 @@ string t_java_generator::java_type_imports() {
     "import java.util.Set;\n" +
     "import java.util.HashSet;\n" +
     "import java.util.EnumSet;\n" +
-    "import java.util.Collections;\n" +
-    "import java.util.BitSet;\n" +
-    "import java.util.Arrays;\n" +
-    "import org.slf4j.Logger;\n" +
-    "import org.slf4j.LoggerFactory;\n\n";
+    "import java.util.Collections;\n\n";
 }
 
 /**
@@ -329,6 +325,7 @@ string t_java_generator::java_thrift_imports() {
   return
     string() +
     "import org.apache.thrift.*;\n" +
+    "import org.apache.thrift.annotation.*;\n" +
     "import org.apache.thrift.meta_data.*;\n" +
     "import org.apache.thrift.protocol.*;\n\n";
 }
@@ -696,12 +693,6 @@ void t_java_generator::generate_java_union(t_struct* tstruct) {
 
   f_struct << endl;
 
-  generate_field_name_constants(f_struct, tstruct);
-
-  f_struct << endl;
-
-  generate_java_meta_data_map(f_struct, tstruct);
-
   generate_union_constructor(f_struct, tstruct);
 
   f_struct << endl;
@@ -957,56 +948,9 @@ void t_java_generator::generate_get_struct_desc(ofstream& out, t_struct* tstruct
 }
 
 void t_java_generator::generate_union_comparisons(ofstream& out, t_struct* tstruct) {
-  // equality
-  indent(out) << "public boolean equals(Object other) {" << endl;
-  indent(out) << "  if (other instanceof " << tstruct->get_name() << ") {" << endl;
-  indent(out) << "    return equals((" << tstruct->get_name() << ")other);" << endl;
-  indent(out) << "  } else {" << endl;
-  indent(out) << "    return false;" << endl;
-  indent(out) << "  }" << endl;
-  indent(out) << "}" << endl;
-
-  out << endl;
-
-  indent(out) << "public boolean equals(" << tstruct->get_name() << " other) {" << endl;
-  indent(out) << "  return other != null && getSetField() == other.getSetField() && ((value_ instanceof byte[]) ? " << endl;
-  indent(out) << "    Arrays.equals((byte[])getFieldValue(), (byte[])other.getFieldValue()) : getFieldValue().equals(other.getFieldValue()));" << endl;
-  indent(out) << "}" << endl;
-  out << endl;
-
-  if (is_comparable(tstruct)) {
-    indent(out) << "@Override" << endl;
-    indent(out) << "public int compareTo(" << type_name(tstruct) << " other) {" << endl;
-    indent(out) << "  int lastComparison = TBaseHelper.compareTo(getSetField(), other.getSetField());" << endl;
-    indent(out) << "  if (lastComparison == 0) {" << endl;
-    indent(out) << "    Object myValue = getFieldValue();" << endl;
-    indent(out) << "    if (myValue instanceof byte[]) {" << endl;
-    indent(out) << "      return TBaseHelper.compareTo((byte[])myValue, (byte[])other.getFieldValue());" << endl;
-    indent(out) << "    } else {" << endl;
-    indent(out) << "      return TBaseHelper.compareTo((Comparable)myValue, (Comparable)other.getFieldValue());" << endl;
-    indent(out) << "    }" << endl;
-    indent(out) << "  }" << endl;
-    indent(out) << "  return lastComparison;" << endl;
-    indent(out) << "}" << endl;
-    out << endl;
-  }
 }
 
 void t_java_generator::generate_union_hashcode(ofstream& out, t_struct* tstruct) {
-  if (gen_hash_code_) {
-    indent(out) << "@Override" << endl;
-    indent(out) << "public int hashCode() {" << endl;
-    indent(out) << "  return new HashCodeBuilder().append(getSetField().getThriftFieldId()).append((getFieldValue() instanceof TEnum) ? ((TEnum)getFieldValue()).getValue() : getFieldValue()).toHashCode();" << endl;
-    indent(out) << "}";
-  } else {
-    indent(out) << "/**" << endl;
-    indent(out) << " * If you'd like this to perform more respectably, use the hashcode generator option." << endl;
-    indent(out) << " */" << endl;
-    indent(out) << "@Override" << endl;
-    indent(out) << "public int hashCode() {" << endl;
-    indent(out) << "  return 0;" << endl;
-    indent(out) << "}" << endl;
-  }
 }
 
 /**
@@ -1028,6 +972,7 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
 
   bool is_final = (tstruct->annotations_.find("final") != tstruct->annotations_.end());
 
+  indent(out) << "@ThriftStruct(\" << tstruct->get_name() << \")" << endl;
   indent(out) <<
     "public " << (is_final ? "final " : "") <<
      (in_class ? "static " : "") << "class " << tstruct->get_name() << " ";
@@ -1035,11 +980,7 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
   if (is_exception) {
     out << "extends Exception ";
   }
-  out << "implements TBase<" << tstruct->get_name() << "._Fields>, java.io.Serializable, Cloneable";
-
-  if (is_comparable(tstruct)) {
-    out << ", Comparable<" << type_name(tstruct) << ">";
-  }
+  out << "implements java.io.Serializable";
 
   out << " ";
 
@@ -1058,10 +999,11 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
   out << endl;
 
   for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
+    generate_java_doc(out, *m_iter);
+    indent(out) << "@ThriftField(name=\"" << (*m_iter)->get_name() << "\", type=" << type_to_enum((*m_iter)->get_type()) << ", id=" << (*m_iter)->get_key() << ")" << endl;
     if (bean_style_) {
       indent(out) << "private ";
     } else {
-      generate_java_doc(out, *m_iter);
       indent(out) << "public ";
     }
     out << declare_field(*m_iter, false) << endl;
@@ -1069,148 +1011,8 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
 
   out << endl;
 
-  generate_field_name_constants(out, tstruct);
-
-  // isset data
-  if (members.size() > 0) {
-    out << endl;
-
-    indent(out) << "// isset id assignments" << endl;
-
-    int i = 0;
-    for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-      if (!type_can_be_null((*m_iter)->get_type())) {
-        indent(out) << "private static final int " << isset_field_id(*m_iter)
-          << " = " << i << ";" <<  endl;
-        i++;
-      }
-    }
-
-    if (i > 0) {
-      indent(out) << "private BitSet __isset_bit_vector = new BitSet(" << i << ");" << endl;
-    }
-
-    out << endl;
-  }
-
-  generate_java_meta_data_map(out, tstruct);
-
-  bool all_optional_members = true;
-
-  // Default constructor
-  indent(out) <<
-    "public " << tstruct->get_name() << "() {" << endl;
-  indent_up();
-  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-    t_type* t = get_true_type((*m_iter)->get_type());
-    if ((*m_iter)->get_value() != NULL) {
-      print_const_value(out, "this." + (*m_iter)->get_name(), t, (*m_iter)->get_value(), true, true);
-    }
-    if ((*m_iter)->get_req() != t_field::T_OPTIONAL) {
-      all_optional_members = false;
-    }
-  }
-  indent_down();
-  indent(out) << "}" << endl << endl;
-
-  if (!members.empty() && !all_optional_members) {
-    // Full constructor for all fields
-    indent(out) <<
-      "public " << tstruct->get_name() << "(" << endl;
-    indent_up();
-    bool first = true;
-    for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-      if ((*m_iter)->get_req() != t_field::T_OPTIONAL) {
-        if (!first) {
-          out << "," << endl;
-        }
-        first = false;
-        indent(out) << type_name((*m_iter)->get_type()) << " " <<
-          (*m_iter)->get_name();
-      }
-    }
-    out << ")" << endl;
-    indent_down();
-    indent(out) << "{" << endl;
-    indent_up();
-    indent(out) << "this();" << endl;
-    for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-      if ((*m_iter)->get_req() != t_field::T_OPTIONAL) {
-        indent(out) << "this." << (*m_iter)->get_name() << " = " <<
-          (*m_iter)->get_name() << ";" << endl;
-        generate_isset_set(out, (*m_iter));
-      }
-    }
-    indent_down();
-    indent(out) << "}" << endl << endl;
-  }
-
-  // copy constructor
-  indent(out) << "/**" << endl;
-  indent(out) << " * Performs a deep copy on <i>other</i>." << endl;
-  indent(out) << " */" << endl;
-  indent(out) << "public " << tstruct->get_name() << "(" << tstruct->get_name() << " other) {" << endl;
-  indent_up();
-
-  if (has_bit_vector(tstruct)) {
-    indent(out) << "__isset_bit_vector.clear();" << endl;
-    indent(out) << "__isset_bit_vector.or(other.__isset_bit_vector);" << endl;    
-  }
-
-  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-    t_field* field = (*m_iter);
-    std::string field_name = field->get_name();
-    t_type* type = field->get_type();
-    bool can_be_null = type_can_be_null(type);
-
-    if (can_be_null) {
-      indent(out) << "if (other." << generate_isset_check(field) << ") {" << endl;
-      indent_up();
-    }
-
-    if (type->is_container()) {
-      generate_deep_copy_container(out, "other", field_name, "__this__" + field_name, type);
-      indent(out) << "this." << field_name << " = __this__" << field_name << ";" << endl;
-    } else {
-      indent(out) << "this." << field_name << " = ";
-      generate_deep_copy_non_container(out, "other." + field_name, field_name, type);
-      out << ";" << endl;
-    }
-
-    if (can_be_null) {
-      indent_down();
-      indent(out) << "}" << endl;
-    }
-  }
-
-  indent_down();
-  indent(out) << "}" << endl << endl;
-
-  // clone method, so that you can deep copy an object when you don't know its class.
-  indent(out) << "public " << tstruct->get_name() << " deepCopy() {" << endl;
-  indent(out) << "  return new " << tstruct->get_name() << "(this);" << endl;
-  indent(out) << "}" << endl << endl;
-
-  indent(out) << "@Deprecated" << endl;
-  indent(out) << "public " << tstruct->get_name() << " clone() {" << endl;
-  indent(out) << "  return new " << tstruct->get_name() << "(this);" << endl;
-  indent(out) << "}" << endl << endl;
-
   generate_java_bean_boilerplate(out, tstruct);
-  generate_generic_field_getters_setters(out, tstruct);
-  generate_generic_isset_method(out, tstruct);
-
-  generate_java_struct_equality(out, tstruct);
-  if (is_comparable(tstruct)) {
-    generate_java_struct_compare_to(out, tstruct);
-  }
-
-  generate_java_struct_reader(out, tstruct);
-  if (is_result) {
-    generate_java_struct_result_writer(out, tstruct);
-  } else {
-    generate_java_struct_writer(out, tstruct);
-  }
+  
   generate_java_struct_tostring(out, tstruct);
   generate_java_validator(out, tstruct);
   scope_down(out);
@@ -1224,149 +1026,9 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
  */
 void t_java_generator::generate_java_struct_equality(ofstream& out,
                                                      t_struct* tstruct) {
-  out << indent() << "@Override" << endl <<
-    indent() << "public boolean equals(Object that) {" << endl;
-  indent_up();
-  out <<
-    indent() << "if (that == null)" << endl <<
-    indent() << "  return false;" << endl <<
-    indent() << "if (that instanceof " << tstruct->get_name() << ")" << endl <<
-    indent() << "  return this.equals((" << tstruct->get_name() << ")that);" << endl <<
-    indent() << "return false;" << endl;
-  scope_down(out);
-  out << endl;
-
-  out <<
-    indent() << "public boolean equals(" << tstruct->get_name() << " that) {" << endl;
-  indent_up();
-  out <<
-    indent() << "if (that == null)" << endl <<
-    indent() << "  return false;" << endl;
-
-  const vector<t_field*>& members = tstruct->get_members();
-  vector<t_field*>::const_iterator m_iter;
-  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-    out << endl;
-
-    t_type* t = get_true_type((*m_iter)->get_type());
-    // Most existing Thrift code does not use isset or optional/required,
-    // so we treat "default" fields as required.
-    bool is_optional = (*m_iter)->get_req() == t_field::T_OPTIONAL;
-    bool can_be_null = type_can_be_null(t);
-    string name = (*m_iter)->get_name();
-
-    string this_present = "true";
-    string that_present = "true";
-    string unequal;
-
-    if (is_optional || can_be_null) {
-      this_present += " && this." + generate_isset_check(*m_iter);
-      that_present += " && that." + generate_isset_check(*m_iter);
-    }
-
-    out <<
-      indent() << "boolean this_present_" << name << " = "
-               << this_present << ";" << endl <<
-      indent() << "boolean that_present_" << name << " = "
-               << that_present << ";" << endl <<
-      indent() << "if (" << "this_present_" << name
-               << " || that_present_" << name << ") {" << endl;
-    indent_up();
-    out <<
-      indent() << "if (!(" << "this_present_" << name
-               << " && that_present_" << name << "))" << endl <<
-      indent() << "  return false;" << endl;
-
-    if (t->is_base_type() && ((t_base_type*)t)->is_binary()) {
-      unequal = "!java.util.Arrays.equals(this." + name + ", that." + name + ")";
-    } else if (can_be_null) {
-      unequal = "!this." + name + ".equals(that." + name + ")";
-    } else {
-      unequal = "this." + name + " != that." + name;
-    }
-
-    out <<
-      indent() << "if (" << unequal << ")" << endl <<
-      indent() << "  return false;" << endl;
-
-    scope_down(out);
-  }
-  out << endl;
-  indent(out) << "return true;" << endl;
-  scope_down(out);
-  out << endl;
-
-  out << indent() << "@Override" << endl <<
-    indent() << "public int hashCode() {" << endl;
-  indent_up();
-  if (gen_hash_code_) {
-    indent(out) << "HashCodeBuilder builder = new HashCodeBuilder();" << endl;
-
-    for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-      out << endl;
-
-      t_type* t = get_true_type((*m_iter)->get_type());
-      bool is_optional = (*m_iter)->get_req() == t_field::T_OPTIONAL;
-      bool can_be_null = type_can_be_null(t);
-      string name = (*m_iter)->get_name();
-
-      string present = "true";
-
-      if (is_optional || can_be_null) {
-        present += " && (" + generate_isset_check(*m_iter) + ")";
-      }
-
-      indent(out) << "boolean present_" << name << " = " << present << ";" << endl;
-      indent(out) << "builder.append(present_" << name << ");" << endl;
-      indent(out) << "if (present_" << name << ")" << endl;
-      if (t->is_enum()) {
-        indent(out) << "  builder.append(" << name << ".getValue());" << endl;
-      } else {
-        indent(out) << "  builder.append(" << name << ");" << endl;
-      }
-    }
-
-    out << endl;
-    indent(out) << "return builder.toHashCode();" << endl;
-  } else {
-    indent(out) << "return 0;" << endl;
-  }
-  indent_down();
-  indent(out) << "}" << endl << endl;
 }
 
 void t_java_generator::generate_java_struct_compare_to(ofstream& out, t_struct* tstruct) {
-  indent(out) << "public int compareTo(" << type_name(tstruct) << " other) {" << endl;
-  indent_up();
-
-  indent(out) << "if (!getClass().equals(other.getClass())) {" << endl;
-  indent(out) << "  return getClass().getName().compareTo(other.getClass().getName());" << endl;
-  indent(out) << "}" << endl;
-  out << endl;
-
-  indent(out) << "int lastComparison = 0;" << endl;
-  indent(out) << type_name(tstruct) << " typedOther = (" << type_name(tstruct) << ")other;" << endl;
-  out << endl;
-
-  const vector<t_field*>& members = tstruct->get_members();
-  vector<t_field*>::const_iterator m_iter;
-  for (m_iter = members.begin(); m_iter != members.end(); ++m_iter) {
-    t_field* field = *m_iter;
-    indent(out) << "lastComparison = Boolean.valueOf(" << generate_isset_check(field) << ").compareTo(" << generate_isset_check(field) << ");" << endl;
-    indent(out) << "if (lastComparison != 0) {" << endl;
-    indent(out) << "  return lastComparison;" << endl;
-    indent(out) << "}" << endl;
-
-    indent(out) << "lastComparison = TBaseHelper.compareTo(" << field->get_name() << ", typedOther." << field->get_name() << ");" << endl;
-    indent(out) << "if (lastComparison != 0) {" << endl;
-    indent(out) << "  return lastComparison;" << endl;
-    indent(out) << "}" << endl;
-  }
-
-  indent(out) << "return 0;" << endl;
-
-  indent_down();
-  indent(out) << "}" << endl << endl;
 }
 
 /**
@@ -1408,27 +1070,26 @@ void t_java_generator::generate_java_struct_reader(ofstream& out,
       "}" << endl;
 
     // Switch statement on the field we are reading
-    indent(out) << "_Fields fieldId = _Fields.findByThriftId(field.id);" << endl;
-    indent(out) << "if (fieldId == null) {" << endl;
+    indent(out) << "if (field.id < 0) {" << endl; // todo check the real range
     indent(out) << "  TProtocolUtil.skip(iprot, field.type);" << endl;
     indent(out) << "} else {" << endl;
     indent_up();
 
-    indent(out) << "switch (fieldId) {" << endl;
+    indent(out) << "switch (field.id) {" << endl;
 
     indent_up();
 
     // Generate deserialization code for known cases
     for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
       indent(out) <<
-        "case " << constant_name((*f_iter)->get_name()) << ":" << endl;
+        "case " << constant_name((*f_iter)->get_key()) << ":" << endl;
       indent_up();
       indent(out) <<
         "if (field.type == " << type_to_enum((*f_iter)->get_type()) << ") {" << endl;
       indent_up();
 
       generate_deserialize_field(out, *f_iter, "this.");
-      generate_isset_set(out, *f_iter);
+      
       indent_down();
       out <<
         indent() << "} else { " << endl <<
@@ -1460,15 +1121,12 @@ void t_java_generator::generate_java_struct_reader(ofstream& out,
       for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
         if ((*f_iter)->get_req() == t_field::T_REQUIRED && !type_can_be_null((*f_iter)->get_type())) {
           out <<
-            indent() << "if (!" << generate_isset_check(*f_iter) << ") {" << endl <<
+            indent() << "if (" << (*f_iter)->get_name() << " == null) {" << endl <<
             indent() << "  throw new TProtocolException(\"Required field '" << (*f_iter)->get_name() << "' was not found in serialized data! Struct: \" + toString());" << endl <<
             indent() << "}" << endl;
         }
       }
     }
-
-    // performs various checks (e.g. check that all required fields are set)
-    indent(out) << "validate();" << endl;
 
   indent_down();
   out <<
@@ -1480,34 +1138,6 @@ void t_java_generator::generate_java_struct_reader(ofstream& out,
 // (e.g. check that all required fields are set)
 void t_java_generator::generate_java_validator(ofstream& out,
                                                    t_struct* tstruct){
-  indent(out) << "public void validate() throws TException {" << endl;
-  indent_up();
-
-  const vector<t_field*>& fields = tstruct->get_members();
-  vector<t_field*>::const_iterator f_iter;
-
-  out << indent() << "// check for required fields" << endl;
-  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
-    if ((*f_iter)->get_req() == t_field::T_REQUIRED) {
-      if (bean_style_) {
-        out <<
-          indent() << "if (!" << generate_isset_check(*f_iter) << ") {" << endl <<
-          indent() << "  throw new TProtocolException(\"Required field '" << (*f_iter)->get_name() << "' is unset! Struct:\" + toString());" << endl <<
-          indent() << "}" << endl << endl;
-      } else{
-        if (type_can_be_null((*f_iter)->get_type())) {
-          indent(out) << "if (" << (*f_iter)->get_name() << " == null) {" << endl;
-          indent(out) << "  throw new TProtocolException(\"Required field '" << (*f_iter)->get_name() << "' was not present! Struct: \" + toString());" << endl;
-          indent(out) << "}" << endl;
-        } else {
-          indent(out) << "// alas, we cannot check '" << (*f_iter)->get_name() << "' because it's a primitive and you chose the non-beans generator." << endl;
-        }
-      }
-    }
-  }
-
-  indent_down();
-  indent(out) << "}" << endl << endl;
 }
 
 /**
@@ -1525,9 +1155,6 @@ void t_java_generator::generate_java_struct_writer(ofstream& out,
   const vector<t_field*>& fields = tstruct->get_sorted_members();
   vector<t_field*>::const_iterator f_iter;
 
-  // performs various checks (e.g. check that all required fields are set)
-  indent(out) << "validate();" << endl << endl;
-
   indent(out) << "oprot.writeStructBegin(STRUCT_DESC);" << endl;
 
   for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
@@ -1539,7 +1166,7 @@ void t_java_generator::generate_java_struct_writer(ofstream& out,
     }
     bool optional = (*f_iter)->get_req() == t_field::T_OPTIONAL;
     if (optional) {
-      indent(out) << "if (" << generate_isset_check((*f_iter)) << ") {" << endl;
+      indent(out) << "if (" << (*f_iter)->get_name() << " != null) {" << endl;
       indent_up();
     }
 
@@ -1586,45 +1213,6 @@ void t_java_generator::generate_java_struct_result_writer(ofstream& out,
     indent() << "public void write(TProtocol oprot) throws TException {" << endl;
   indent_up();
 
-  string name = tstruct->get_name();
-  const vector<t_field*>& fields = tstruct->get_sorted_members();
-  vector<t_field*>::const_iterator f_iter;
-
-  indent(out) << "oprot.writeStructBegin(STRUCT_DESC);" << endl;
-
-  bool first = true;
-  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
-    if (first) {
-      first = false;
-      out <<
-        endl <<
-        indent() << "if ";
-    } else {
-      out << " else if ";
-    }
-
-    out << "(this." << generate_isset_check(*f_iter) << ") {" << endl;
-
-    indent_up();
-    
-    indent(out) << "oprot.writeFieldBegin(" << constant_name((*f_iter)->get_name()) << "_FIELD_DESC);" << endl;
-
-    // Write field contents
-    generate_serialize_field(out, *f_iter, "this.");
-
-    // Write field closer
-    indent(out) <<
-      "oprot.writeFieldEnd();" << endl;
-
-    indent_down();
-    indent(out) << "}";
-  }
-  // Write the struct map
-  out <<
-    endl <<
-    indent() << "oprot.writeFieldStop();" << endl <<
-    indent() << "oprot.writeStructEnd();" << endl;
-
   indent_down();
   out <<
     indent() << "}" << endl <<
@@ -1649,11 +1237,7 @@ void t_java_generator::generate_reflection_getters(ostringstream& out, t_type* t
 void t_java_generator::generate_reflection_setters(ostringstream& out, t_type* type, string field_name, string cap_name) {
   indent(out) << "case " << constant_name(field_name) << ":" << endl;
   indent_up();
-  indent(out) << "if (value == null) {" << endl;
-  indent(out) << "  unset" << get_cap_name(field_name) << "();" << endl;
-  indent(out) << "} else {" << endl;
-  indent(out) << "  set" << cap_name << "((" << type_name(type, true, false) << ")value);" << endl;
-  indent(out) << "}" << endl;
+  indent(out) << "set" << cap_name << "((" << type_name(type, true, false) << ")value);" << endl;
   indent(out) << "break;" << endl << endl;
 
   indent_down();
@@ -1683,9 +1267,6 @@ void t_java_generator::generate_generic_field_getters_setters(std::ofstream& out
   // create the setter
   
   indent(out) << "public void setFieldValue(_Fields field, Object value) {" << endl;
-  indent(out) << "  switch (field) {" << endl;
-  out << setter_stream.str();
-  indent(out) << "  }" << endl;
   indent(out) << "}" << endl << endl;
 
   indent(out) << "public void setFieldValue(int fieldID, Object value) {" << endl;
@@ -1695,9 +1276,6 @@ void t_java_generator::generate_generic_field_getters_setters(std::ofstream& out
   // create the getter
   indent(out) << "public Object getFieldValue(_Fields field) {" << endl;
   indent_up();
-  indent(out) << "switch (field) {" << endl;
-  out << getter_stream.str();
-  indent(out) << "}" << endl;
   indent(out) << "throw new IllegalStateException();" << endl;
   indent_down();
   indent(out) << "}" << endl << endl;
@@ -1716,17 +1294,6 @@ void t_java_generator::generate_generic_isset_method(std::ofstream& out, t_struc
   indent(out) << "/** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */" << endl;
   indent(out) << "public boolean isSet(_Fields field) {" << endl;
   indent_up();
-  indent(out) << "switch (field) {" << endl;
-
-  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
-    t_field* field = *f_iter;
-    indent(out) << "case " << constant_name(field->get_name()) << ":" << endl;
-    indent_up();
-    indent(out) << "return " << generate_isset_check(field) << ";" << endl;
-    indent_down();
-  }
-
-  indent(out) << "}" << endl;
   indent(out) << "throw new IllegalStateException();" << endl;
   indent_down();
   indent(out) << "}" << endl << endl;
@@ -1752,76 +1319,6 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
     std::string field_name = field->get_name();
     std::string cap_name = get_cap_name(field_name);
 
-    if (type->is_container()) {
-      // Method to return the size of the collection
-      indent(out) << "public int get" << cap_name;
-      out << get_cap_name("size() {") << endl;
-
-      indent_up();
-      indent(out) << "return (this." << field_name << " == null) ? 0 : " <<
-        "this." << field_name << ".size();" << endl;
-      indent_down();
-      indent(out) << "}" << endl << endl;
-    }
-
-    if (type->is_set() || type->is_list()) {
-
-      t_type* element_type;
-      if (type->is_set()) {
-        element_type = ((t_set*)type)->get_elem_type();
-      } else {
-        element_type = ((t_list*)type)->get_elem_type();
-      }
-
-      // Iterator getter for sets and lists
-      indent(out) << "public java.util.Iterator<" <<
-        type_name(element_type, true, false) <<  "> get" << cap_name;
-      out << get_cap_name("iterator() {") << endl;
-
-      indent_up();
-      indent(out) << "return (this." << field_name << " == null) ? null : " <<
-        "this." << field_name << ".iterator();" << endl;
-      indent_down();
-      indent(out) << "}" << endl << endl;
-
-      // Add to set or list, create if the set/list is null
-      indent(out);
-      out << "public void add" << get_cap_name("to");
-      out << cap_name << "(" << type_name(element_type) << " elem) {" << endl;
-
-      indent_up();
-      indent(out) << "if (this." << field_name << " == null) {" << endl;
-      indent_up();
-      indent(out) << "this." << field_name << " = new " << type_name(type, false, true) <<
-        "();" << endl;
-      indent_down();
-      indent(out) << "}" << endl;
-      indent(out) << "this." << field_name << ".add(elem);" << endl;
-      indent_down();
-      indent(out) << "}" << endl << endl;
-
-    } else if (type->is_map()) {
-      // Put to map
-      t_type* key_type = ((t_map*)type)->get_key_type();
-      t_type* val_type = ((t_map*)type)->get_val_type();
-
-      indent(out);
-      out << "public void put" << get_cap_name("to");
-      out << cap_name << "(" << type_name(key_type) << " key, "
-        << type_name(val_type) << " val) {" << endl;
-
-      indent_up();
-      indent(out) << "if (this." << field_name << " == null) {" << endl;
-      indent_up();
-      indent(out) << "this." << field_name << " = new " <<
-        type_name(type, false, true) << "();" << endl;
-      indent_down();
-      indent(out) << "}" << endl;
-      indent(out) << "this." << field_name << ".put(key, val);" << endl;
-      indent_down();
-      indent(out) << "}" << endl << endl;
-    }
-
     // Simple getter
     generate_java_doc(out, field);
     indent(out) << "public " << type_name(type);
@@ -1839,51 +1336,14 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
 
     // Simple setter
     generate_java_doc(out, field);
-    indent(out) << "public " << type_name(tstruct) << " set" << cap_name << "(" << type_name(type) <<
+    indent(out) << "public void set" << cap_name << "(" << type_name(type) <<
       " " << field_name << ") {" << endl;
     indent_up();
     indent(out) << "this." << field_name << " = " << field_name << ";" <<
       endl;
-    generate_isset_set(out, field);
-    indent(out) << "return this;" << endl;
 
     indent_down();
     indent(out) << "}" << endl << endl;
-
-    // Unsetter
-    indent(out) << "public void unset" << cap_name << "() {" << endl;
-    indent_up();
-    if (type_can_be_null(type)) {
-      indent(out) << "this." << field_name << " = null;" << endl;
-    } else {
-      indent(out) << "__isset_bit_vector.clear(" << isset_field_id(field) << ");" << endl;
-    }
-    indent_down();
-    indent(out) << "}" << endl << endl;
-
-    // isSet method
-    indent(out) << "/** Returns true if field " << field_name << " is set (has been asigned a value) and false otherwise */" << endl;
-    indent(out) << "public boolean is" << get_cap_name("set") << cap_name << "() {" << endl;
-    indent_up();
-    if (type_can_be_null(type)) {
-      indent(out) << "return this." << field_name << " != null;" << endl;
-    } else {
-      indent(out) << "return __isset_bit_vector.get(" << isset_field_id(field) << ");" << endl;
-    }
-    indent_down();
-    indent(out) << "}" << endl << endl;
-
-    indent(out) << "public void set" << cap_name << get_cap_name("isSet") << "(boolean value) {" << endl;
-    indent_up();
-    if (type_can_be_null(type)) {
-      indent(out) << "if (!value) {" << endl;
-      indent(out) << "  this." << field_name << " = null;" << endl;
-      indent(out) << "}" << endl;
-    } else {
-      indent(out) << "__isset_bit_vector.set(" << isset_field_id(field) << ", value);" << endl;
-    }
-    indent_down();
-    indent(out) << "}" << endl << endl; 
   }
 }
 
@@ -1894,75 +1354,11 @@ void t_java_generator::generate_java_bean_boilerplate(ofstream& out,
  */
 void t_java_generator::generate_java_struct_tostring(ofstream& out,
                                                      t_struct* tstruct) {
-  out << indent() << "@Override" << endl <<
-    indent() << "public String toString() {" << endl;
+  out << indent() << "public String toString() {" << endl;
   indent_up();
-
-  out <<
-    indent() << "StringBuilder sb = new StringBuilder(\"" << tstruct->get_name() << "(\");" << endl;
-  out << indent() << "boolean first = true;" << endl << endl;
-
-  const vector<t_field*>& fields = tstruct->get_members();
-  vector<t_field*>::const_iterator f_iter;
-  bool first = true;
-  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
-    bool could_be_unset = (*f_iter)->get_req() == t_field::T_OPTIONAL;
-    if(could_be_unset) {
-      indent(out) << "if (" << generate_isset_check(*f_iter) << ") {" << endl;
-      indent_up();
-    }
-
-    t_field* field = (*f_iter);
-
-    if (!first) {
-      indent(out) << "if (!first) sb.append(\", \");" << endl;
-    }
-    indent(out) << "sb.append(\"" << (*f_iter)->get_name() << ":\");" << endl;
-    bool can_be_null = type_can_be_null(field->get_type());
-    if (can_be_null) {
-      indent(out) << "if (this." << (*f_iter)->get_name() << " == null) {" << endl;
-      indent(out) << "  sb.append(\"null\");" << endl;
-      indent(out) << "} else {" << endl;
-      indent_up();
-    }
-    
-    if (field->get_type()->is_base_type() && ((t_base_type*)(field->get_type()))->is_binary()) {
-      indent(out) << "  int __" << field->get_name() << "_size = Math.min(this." << field->get_name() << ".length, 128);" << endl;
-      indent(out) << "  for (int i = 0; i < __" << field->get_name() << "_size; i++) {" << endl;
-      indent(out) << "    if (i != 0) sb.append(\" \");" << endl;
-      indent(out) << "    sb.append(Integer.toHexString(this." << field->get_name() << "[i]).length() > 1 ? Integer.toHexString(this." << field->get_name() << "[i]).substring(Integer.toHexString(this." << field->get_name() << "[i]).length() - 2).toUpperCase() : \"0\" + Integer.toHexString(this." << field->get_name() << "[i]).toUpperCase());" <<endl;
-      indent(out) << "  }" << endl;
-      indent(out) << "  if (this." << field->get_name() << ".length > 128) sb.append(\" ...\");" << endl;
-    } else if(field->get_type()->is_enum()) {
-      indent(out) << "String " << field->get_name() << "_name = " << field->get_name() << ".name();"<< endl;
-      indent(out) << "if (" << field->get_name() << "_name != null) {" << endl;
-      indent(out) << "  sb.append(" << field->get_name() << "_name);" << endl;
-      indent(out) << "  sb.append(\" (\");" << endl;
-      indent(out) << "}" << endl;
-      indent(out) << "sb.append(this." << field->get_name() << ");" << endl;
-      indent(out) << "if (" << field->get_name() << "_name != null) {" << endl;
-      indent(out) << "  sb.append(\")\");" << endl;
-      indent(out) << "}" << endl;
-    } else {
-      indent(out) << "sb.append(this." << (*f_iter)->get_name() << ");" << endl;
-    }
-    
-    if (can_be_null) {
-      indent_down();
-      indent(out) << "}" << endl;
-    }
-    indent(out) << "first = false;" << endl;
-
-    if(could_be_unset) {
-      indent_down();
-      indent(out) << "}" << endl;
-    }
-    first = false;
-  }
-  out <<
-    indent() << "sb.append(\")\");" << endl <<
-    indent() << "return sb.toString();" << endl;
-
+  
+  out << indent() << "return ToStringBuilder.toString(this);" << endl;
+  
   indent_down();
   indent(out) << "}" << endl <<
     endl;
@@ -2108,7 +1504,7 @@ void t_java_generator::generate_service(t_service* tservice) {
   // Generate the three main parts of the service
   generate_service_interface(tservice);
   generate_service_client(tservice);
-  generate_service_server(tservice);
+  //generate_service_server(tservice);
   generate_service_helpers(tservice);
 
   indent_down();
@@ -2326,7 +1722,7 @@ void t_java_generator::generate_service_client(t_service* tservice) {
       // Careful, only return _result if not a void function
       if (!(*f_iter)->get_returntype()->is_void()) {
         f_service_ <<
-          indent() << "if (result." << generate_isset_check("success") << ") {" << endl <<
+          indent() << "if (result.success != null) {" << endl <<
           indent() << "  return result.success;" << endl <<
           indent() << "}" << endl;
       }
@@ -2552,12 +1948,6 @@ void t_java_generator::generate_process_function(t_service* tservice,
     f_service_ << "args." << (*f_iter)->get_name();
   }
   f_service_ << ");" << endl;
-
-  // Set isset on success field
-  if (!tfunction->is_oneway() && !tfunction->get_returntype()->is_void() && !type_can_be_null(tfunction->get_returntype())) {
-    f_service_ <<
-      indent() << "result.set" << get_cap_name("success") << get_cap_name("isSet") << "(true);" << endl;
-  }
 
   if (!tfunction->is_oneway() && xceptions.size() > 0) {
     indent_down();
@@ -3574,17 +2964,7 @@ bool t_java_generator::is_comparable(t_struct* tstruct) {
 }
 
 bool t_java_generator::is_comparable(t_type* type) {
-  if (type->is_container()) {
-    if (type->is_list()) {
-      return is_comparable(get_true_type(((t_list*)type)->get_elem_type()));
-    } else {
-      return false;
-    }
-  } else if (type->is_struct()) {
-    return is_comparable((t_struct*)type);
-  } else {
-    return true;
-  }
+  return false;
 }
 
 bool t_java_generator::has_bit_vector(t_struct* tstruct) {
