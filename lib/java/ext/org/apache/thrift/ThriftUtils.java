@@ -260,9 +260,10 @@ public class ThriftUtils {
                                 if (field.getType().isEnum()) {
                                     Method getValue = field.getType().getMethod("getValue");
                                     oprot.writeI32((Integer) getValue.invoke(value));
+                                } else {
+                                    oprot.writeI32((Integer) value);
                                 }
 
-                                oprot.writeI32((Integer) value);
                                 break;
                             case TType.I64:
                                 oprot.writeI64((Long) value);
