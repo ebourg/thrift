@@ -48,6 +48,18 @@ import org.apache.thrift.protocol.TType;
  */
 public class ThriftUtils {
 
+    private static Map<Class, Field[]> cache = new HashMap<Class, Field[]>(); 
+
+    private static Field[] getFields(Class cls) {
+        Field[] fields = cache.get(cls);
+        if (fields == null) {
+            fields = cls.getFields();
+            cache.put(cls, fields);
+        }
+        
+        return fields;
+    }
+
     /**
      * Deserializes an object using the specified protocol.
      * 
@@ -96,7 +108,7 @@ public class ThriftUtils {
         iprot.readStructBegin();
         
         Map<Short, Field> fields = new HashMap<Short, Field>();
-        for (Field field : object.getClass().getFields()) {
+        for (Field field : getFields(object.getClass())) {
             ThriftField desc = field.getAnnotation(ThriftField.class);
             if (desc != null) {
                 fields.put(desc.id(), field);
@@ -263,7 +275,7 @@ public class ThriftUtils {
         try {
             oprot.writeStructBegin(new TStruct(struct.value()));
 
-            for (Field field : object.getClass().getFields()) {
+            for (Field field : getFields(object.getClass())) {
                 ThriftField desc = field.getAnnotation(ThriftField.class);
                 if (desc != null) {
                     Object value = field.get(object);
