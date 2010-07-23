@@ -22,6 +22,7 @@ package org.apache.thrift;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -165,51 +166,16 @@ public class ThriftUtils {
                         value = read(iprot, f.getType());
                         break;
                     
-                    case TType.MAP:
-                        Class keyClass = (Class) ((ParameterizedType) f.getGenericType()).getActualTypeArguments()[0];
-                        Class valueClass = (Class) ((ParameterizedType) f.getGenericType()).getActualTypeArguments()[1];
-                        
-                        TMap tmap = iprot.readMapBegin();
-                        Map map = new HashMap(tmap.size);
-                        for (int i = 0; i < tmap.size; ++i) {
-                            Object key = read(iprot, keyClass);
-                            Object val = read(iprot, valueClass);
-
-                            map.put(key, val);
-                        }
-                        iprot.readMapEnd();
-                        
-                        value= map;
+                    case TType.MAP:                        
+                        value = readMap(iprot, (ParameterizedType) f.getGenericType());
                         break;
                         
-                    case TType.SET:
-                        Class elementClass = (Class) ((ParameterizedType) f.getGenericType()).getActualTypeArguments()[0];
-                        
-                        TSet tset = iprot.readSetBegin();
-                        Set set = new HashSet(tset.size);
-                        
-                        for (int i = 0; i < tset.size; ++i) {
-                            set.add(read(iprot, elementClass));
-                        }
-                        
-                        iprot.readSetEnd();
-                        
-                        value = set;
+                    case TType.SET:                        
+                        value = readSet(iprot, (ParameterizedType) f.getGenericType());
                         break;
                         
-                    case TType.LIST:
-                        Class cls = (Class) ((ParameterizedType) f.getGenericType()).getActualTypeArguments()[0];
-                        
-                        TList tlist = iprot.readListBegin();
-                        List list = new ArrayList(tlist.size);
-                        
-                        for (int i = 0; i < tlist.size; ++i) {
-                            list.add(read(iprot, cls));
-                        }
-                        
-                        iprot.readListEnd();
-                        
-                        value = list;
+                    case TType.LIST:                        
+                        value = readList(iprot, (ParameterizedType) f.getGenericType());
                         break;
 
                     case TType.ENUM:                        
@@ -232,6 +198,73 @@ public class ThriftUtils {
         iprot.readStructEnd();
     }
 
+    private static Object read(TProtocol iprot, Type type) throws TException {
+        if (type instanceof Class) {
+            return read(iprot, (Class) type);
+        } else if (type instanceof ParameterizedType) {
+            Class cls = (Class) ((ParameterizedType) type).getRawType();
+            if (Map.class.isAssignableFrom(cls)) {
+                return readMap(iprot, (ParameterizedType) type);
+            } else if (List.class.isAssignableFrom(cls)) {
+                return readList(iprot, (ParameterizedType) type);
+            } else if (Set.class.isAssignableFrom(cls)) {
+                return readSet(iprot, (ParameterizedType) type);
+            }
+        }
+
+        throw new IllegalArgumentException("Unsupported type: " + type);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List readList(TProtocol iprot, ParameterizedType type) throws TException {
+        Class cls = (Class) type.getActualTypeArguments()[0];
+        
+        TList tlist = iprot.readListBegin();
+        List list = new ArrayList(tlist.size);
+        
+        for (int i = 0; i < tlist.size; ++i) {
+            list.add(read(iprot, cls));
+        }
+        
+        iprot.readListEnd();
+        
+        return list;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Set readSet(TProtocol iprot, ParameterizedType type) throws TException {
+        Type elementType = type.getActualTypeArguments()[0];
+        
+        TSet tset = iprot.readSetBegin();
+        Set set = new HashSet(tset.size);
+        
+        for (int i = 0; i < tset.size; ++i) {
+            set.add(read(iprot, elementType));
+        }
+        
+        iprot.readSetEnd();
+        
+        return set;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map readMap(TProtocol iprot, ParameterizedType type) throws TException {
+        Type keyType = type.getActualTypeArguments()[0];
+        Type valueType = type.getActualTypeArguments()[1];
+        
+        TMap tmap = iprot.readMapBegin();
+        Map map = new HashMap(tmap.size);
+        for (int i = 0; i < tmap.size; ++i) {
+            Object key = read(iprot, keyType);
+            Object val = read(iprot, valueType);
+            
+            map.put(key, val);
+        }
+        iprot.readMapEnd();
+        
+        return map;
+    }
+    
     /**
      * Serializes a Thrift struct using the specified protocol.
      * 
@@ -316,6 +349,7 @@ public class ThriftUtils {
                                 break;
 
                             case TType.MAP:
+                                // todo fix nested collections
                                 Map map = (Map) value;
                                 Class keyClass = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
                                 Class valueClass = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[1];
@@ -332,6 +366,7 @@ public class ThriftUtils {
                                 break;
 
                             case TType.SET:
+                                // todo fix nested collections
                                 Set set = (Set) value;
                                 Class elementClass = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
 
@@ -346,6 +381,7 @@ public class ThriftUtils {
                                 break;
 
                             case TType.LIST:
+                                // todo fix nested collections
                                 List list = (List) value;
                                 Class cls = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
 
