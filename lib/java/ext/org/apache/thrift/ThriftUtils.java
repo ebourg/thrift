@@ -228,12 +228,39 @@ public class ThriftUtils {
      * @throws TException
      */
     public static void write(TProtocol oprot, Object object) throws TException {
-        try {
-            ThriftStruct struct = object.getClass().getAnnotation(ThriftStruct.class);
-            if (struct == null) {
-                throw new IllegalArgumentException("Object is not a Thrift struct: " + object);
+        if (object instanceof String) {
+            oprot.writeString((String) object);
+            return;
+        } else if (object instanceof Number) {
+            if (object instanceof Byte) {
+                oprot.writeByte((Byte) object);
+                return;
+            } else if (object instanceof Short) {
+                oprot.writeI16((Short) object);
+                return;
+            } else if (object instanceof Integer) {
+                oprot.writeI32((Integer) object);
+                return;
+            } else if (object instanceof Long) {
+                oprot.writeI64((Long) object);
+                return;
+            } else if (object instanceof Double) {
+                 oprot.writeDouble((Double) object);
+                return;
+            } else {
+                throw new RuntimeException("Unsupported type: " + object.getClass());
             }
-            
+        } else if (object instanceof Boolean) {
+            oprot.writeBool((Boolean) object);
+            return;
+        }
+        
+        ThriftStruct struct = object.getClass().getAnnotation(ThriftStruct.class);
+        if (struct == null) {
+            throw new IllegalArgumentException("Object is not a Thrift struct: " + object);
+        }
+        
+        try {
             oprot.writeStructBegin(new TStruct(struct.value()));
 
             for (Field field : object.getClass().getFields()) {
@@ -285,7 +312,6 @@ public class ThriftUtils {
                                 oprot.writeMapBegin(tmap);
                                 Set<Map.Entry> keyset = map.keySet();
                                 for (Map.Entry entry : keyset) {
-                                    // todo support non struct types
                                     write(oprot, entry.getKey());
                                     write(oprot, entry.getValue());
                                 }
@@ -301,7 +327,7 @@ public class ThriftUtils {
                                 oprot.writeSetBegin(tset);
                                 
                                 for (Object element : set) {
-                                    write(oprot, element); // todo support non struct types
+                                    write(oprot, element);
                                 }
 
                                 oprot.writeSetEnd();
@@ -315,7 +341,7 @@ public class ThriftUtils {
                                 oprot.writeListBegin(tlist);
 
                                 for (Object element : list) {
-                                    write(oprot, element); // todo support non struct types
+                                    write(oprot, element);
                                 }
 
                                 oprot.writeListEnd();
@@ -338,6 +364,8 @@ public class ThriftUtils {
             oprot.writeFieldStop();
             oprot.writeStructEnd();
 
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new TException(e);
         }
