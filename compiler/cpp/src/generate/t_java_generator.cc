@@ -972,7 +972,7 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
 
   bool is_final = (tstruct->annotations_.find("final") != tstruct->annotations_.end());
 
-  indent(out) << "@ThriftStruct(\" << tstruct->get_name() << \")" << endl;
+  indent(out) << "@ThriftStruct(\"" << tstruct->get_name() << "\")" << endl;
   indent(out) <<
     "public " << (is_final ? "final " : "") <<
      (in_class ? "static " : "") << "class " << tstruct->get_name() << " ";
@@ -986,7 +986,7 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
 
   scope_up(out);
 
-  generate_struct_desc(out, tstruct);
+  //generate_struct_desc(out, tstruct);
 
   // Members are public for -java, private for -javabean
   const vector<t_field*>& members = tstruct->get_members();
@@ -994,7 +994,7 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
 
   out << endl;
 
-  generate_field_descs(out, tstruct);
+  //generate_field_descs(out, tstruct);
 
   out << endl;
 
@@ -1006,7 +1006,7 @@ void t_java_generator::generate_java_struct_definition(ofstream &out,
     } else {
       indent(out) << "public ";
     }
-    out << declare_field(*m_iter, false) << endl;
+    out << declare_field(*m_iter, false) << endl << endl;
   }
 
   out << endl;
@@ -1070,7 +1070,7 @@ void t_java_generator::generate_java_struct_reader(ofstream& out,
       "}" << endl;
 
     // Switch statement on the field we are reading
-    indent(out) << "if (field.id < 0) {" << endl; // todo check the real range
+    indent(out) << "if (field.id < 0) {" << endl;
     indent(out) << "  TProtocolUtil.skip(iprot, field.type);" << endl;
     indent(out) << "} else {" << endl;
     indent_up();
@@ -1082,7 +1082,7 @@ void t_java_generator::generate_java_struct_reader(ofstream& out,
     // Generate deserialization code for known cases
     for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
       indent(out) <<
-        "case " << constant_name((*f_iter)->get_key()) << ":" << endl;
+        "case " << (*f_iter)->get_key() << ":" << endl;
       indent_up();
       indent(out) <<
         "if (field.type == " << type_to_enum((*f_iter)->get_type()) << ") {" << endl;
@@ -1356,9 +1356,9 @@ void t_java_generator::generate_java_struct_tostring(ofstream& out,
                                                      t_struct* tstruct) {
   out << indent() << "public String toString() {" << endl;
   indent_up();
-  
+
   out << indent() << "return ToStringBuilder.toString(this);" << endl;
-  
+
   indent_down();
   indent(out) << "}" << endl <<
     endl;
@@ -1504,7 +1504,6 @@ void t_java_generator::generate_service(t_service* tservice) {
   // Generate the three main parts of the service
   generate_service_interface(tservice);
   generate_service_client(tservice);
-  //generate_service_server(tservice);
   generate_service_helpers(tservice);
 
   indent_down();
@@ -1686,7 +1685,7 @@ void t_java_generator::generate_service_client(t_service* tservice) {
     }
 
     f_service_ <<
-      indent() << "args.write(oprot_);" << endl <<
+      indent() << "ThriftUtils.write(oprot_, args);" << endl <<
       indent() << "oprot_.writeMessageEnd();" << endl <<
       indent() << "oprot_.getTransport().flush();" << endl;
 
@@ -1716,7 +1715,7 @@ void t_java_generator::generate_service_client(t_service* tservice) {
         indent() << "  throw x;" << endl <<
         indent() << "}" << endl <<
         indent() << resultname << " result = new " << resultname << "();" << endl <<
-        indent() << "result.read(iprot_);" << endl <<
+        indent() << "ThriftUtils.read(iprot_, result);" << endl <<
         indent() << "iprot_.readMessageEnd();" << endl;
 
       // Careful, only return _result if not a void function
