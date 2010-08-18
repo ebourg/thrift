@@ -354,7 +354,7 @@ public class ThriftUtils {
                                 Class keyClass = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
                                 Class valueClass = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[1];
 
-                                TMap tmap = new TMap(getThiftType(keyClass), getThiftType(valueClass), map.size());
+                                TMap tmap = new TMap(getThriftType(keyClass), getThriftType(valueClass), map.size());
                                 oprot.writeMapBegin(tmap);
                                 Set<Map.Entry> keyset = map.keySet();
                                 for (Map.Entry entry : keyset) {
@@ -370,7 +370,7 @@ public class ThriftUtils {
                                 Set set = (Set) value;
                                 Class elementClass = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
 
-                                TSet tset = new TSet(getThiftType(elementClass), set.size());
+                                TSet tset = new TSet(getThriftType(elementClass), set.size());
                                 oprot.writeSetBegin(tset);
                                 
                                 for (Object element : set) {
@@ -385,7 +385,7 @@ public class ThriftUtils {
                                 List list = (List) value;
                                 Class cls = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
 
-                                TList tlist = new TList(getThiftType(cls), list.size());
+                                TList tlist = new TList(getThriftType(cls), list.size());
                                 oprot.writeListBegin(tlist);
 
                                 for (Object element : list) {
@@ -424,7 +424,7 @@ public class ThriftUtils {
      * 
      * @param cls
      */
-    public static byte getThiftType(Class cls) {
+    public static byte getThriftType(Class cls) {
         if (String.class.equals(cls)) {
             return TType.STRING;
         } else if (Number.class.isAssignableFrom(cls)) {
