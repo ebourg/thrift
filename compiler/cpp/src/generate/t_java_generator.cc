@@ -1578,28 +1578,13 @@ void t_java_generator::generate_service_client(t_service* tservice) {
     "public Client(TProtocol prot)" << endl;
   scope_up(f_service_);
   indent(f_service_) <<
-    "this(prot, prot);" << endl;
-  scope_down(f_service_);
-  f_service_ << endl;
-
-  indent(f_service_) <<
-    "public Client(TProtocol iprot, TProtocol oprot)" << endl;
-  scope_up(f_service_);
-  if (extends.empty()) {
-    f_service_ <<
-      indent() << "iprot_ = iprot;" << endl <<
-      indent() << "oprot_ = oprot;" << endl;
-  } else {
-    f_service_ <<
-      indent() << "super(iprot, oprot);" << endl;
-  }
+    "prot_ = prot;" << endl;
   scope_down(f_service_);
   f_service_ << endl;
 
   if (extends.empty()) {
     f_service_ <<
-      indent() << "protected TProtocol iprot_;"  << endl <<
-      indent() << "protected TProtocol oprot_;"  << endl <<
+      indent() << "protected TProtocol prot_;"  << endl <<
       endl;
   }
 
@@ -1657,7 +1642,7 @@ void t_java_generator::generate_service_client(t_service* tservice) {
 
     // Serialize the request
     f_service_ <<
-      indent() << "oprot_.writeMessageBegin(new TMessage(\"" << funname << "\", TMessageType.CALL, 0));" << endl <<
+      indent() << "prot_.writeMessageBegin(new TMessage(\"" << funname << "\", TMessageType.CALL, 0));" << endl <<
       indent() << argsname << " args = new " << argsname << "();" << endl;
 
     for (fld_iter = fields.begin(); fld_iter != fields.end(); ++fld_iter) {
@@ -1666,9 +1651,9 @@ void t_java_generator::generate_service_client(t_service* tservice) {
     }
 
     f_service_ <<
-      indent() << "ThriftUtils.write(oprot_, args);" << endl <<
-      indent() << "oprot_.writeMessageEnd();" << endl <<
-      indent() << "oprot_.getTransport().flush();" << endl;
+      indent() << "ThriftUtils.write(prot_, args);" << endl <<
+      indent() << "prot_.writeMessageEnd();" << endl <<
+      indent() << "prot_.getTransport().flush();" << endl;
 
     scope_down(f_service_);
     f_service_ << endl;
@@ -1689,15 +1674,15 @@ void t_java_generator::generate_service_client(t_service* tservice) {
       // TODO(mcslee): Message validation here, was the seqid etc ok?
 
       f_service_ <<
-        indent() << "TMessage msg = iprot_.readMessageBegin();" << endl <<
+        indent() << "TMessage msg = prot_.readMessageBegin();" << endl <<
         indent() << "if (msg.type == TMessageType.EXCEPTION) {" << endl <<
-        indent() << "  TApplicationException x = TApplicationException.read(iprot_);" << endl <<
-        indent() << "  iprot_.readMessageEnd();" << endl <<
+        indent() << "  TApplicationException x = TApplicationException.read(prot_);" << endl <<
+        indent() << "  prot_.readMessageEnd();" << endl <<
         indent() << "  throw x;" << endl <<
         indent() << "}" << endl <<
         indent() << resultname << " result = new " << resultname << "();" << endl <<
-        indent() << "ThriftUtils.read(iprot_, result);" << endl <<
-        indent() << "iprot_.readMessageEnd();" << endl;
+        indent() << "ThriftUtils.read(prot_, result);" << endl <<
+        indent() << "prot_.readMessageEnd();" << endl;
 
       // Careful, only return _result if not a void function
       if (!(*f_iter)->get_returntype()->is_void()) {
