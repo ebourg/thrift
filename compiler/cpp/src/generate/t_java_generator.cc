@@ -1600,8 +1600,6 @@ void t_java_generator::generate_service_client(t_service* tservice) {
     f_service_ <<
       indent() << "protected TProtocol iprot_;"  << endl <<
       indent() << "protected TProtocol oprot_;"  << endl <<
-      endl <<
-      indent() << "protected int seqid_;" << endl <<
       endl;
 
     indent(f_service_) <<
@@ -1676,7 +1674,7 @@ void t_java_generator::generate_service_client(t_service* tservice) {
 
     // Serialize the request
     f_service_ <<
-      indent() << "oprot_.writeMessageBegin(new TMessage(\"" << funname << "\", TMessageType.CALL, seqid_));" << endl <<
+      indent() << "oprot_.writeMessageBegin(new TMessage(\"" << funname << "\", TMessageType.CALL, 0));" << endl <<
       indent() << argsname << " args = new " << argsname << "();" << endl;
 
     for (fld_iter = fields.begin(); fld_iter != fields.end(); ++fld_iter) {
