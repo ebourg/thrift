@@ -1595,6 +1595,10 @@ void t_java_generator::generate_service_client(t_service* tservice) {
     string funname = (*f_iter)->get_name();
 
     // Open function
+    if ((*f_iter)->is_oneway()) {
+      indent(f_service_) << "@OneWay" << endl;
+    }
+    
     indent(f_service_) <<
       "public " << function_signature(*f_iter) << endl;
     scope_up(f_service_);
