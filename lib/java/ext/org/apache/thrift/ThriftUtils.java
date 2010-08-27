@@ -356,8 +356,8 @@ public class ThriftUtils {
 
                                 TMap tmap = new TMap(getThriftType(keyClass), getThriftType(valueClass), map.size());
                                 oprot.writeMapBegin(tmap);
-                                Set<Map.Entry> keyset = map.keySet();
-                                for (Map.Entry entry : keyset) {
+                                Set<Map.Entry> entries = map.entrySet();
+                                for (Map.Entry entry : entries) {
                                     write(oprot, entry.getKey());
                                     write(oprot, entry.getValue());
                                 }
