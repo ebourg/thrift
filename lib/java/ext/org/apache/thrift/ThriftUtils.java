@@ -51,6 +51,8 @@ public class ThriftUtils {
 
     private static Map<Class, Field[]> cache = new HashMap<Class, Field[]>(); 
 
+    private static Map<Class, Map<Short, Field>> fieldmapCache = new HashMap<Class, Map<Short, Field>>(); 
+
     private static Field[] getFields(Class cls) {
         Field[] fields = cache.get(cls);
         if (fields == null) {
@@ -97,7 +99,29 @@ public class ThriftUtils {
             throw new TException(e);
         }
     }
-    
+
+    /**
+     * Returns the map of fields for the class specified. The key is the id of the Thrift field.
+     */
+    private static Map<Short, Field> getFieldMap(Class cls) {
+        Map<Short, Field> fields = fieldmapCache.get(cls);
+        if (fields != null) {
+            return fields;
+        }
+        
+        fields = new HashMap<Short, Field>();
+        for (Field field : getFields(cls)) {
+            ThriftField desc = field.getAnnotation(ThriftField.class);
+            if (desc != null) {
+                fields.put(desc.id(), field);
+            }
+        }
+        
+        fieldmapCache.put(cls, fields);
+        
+        return fields;
+    }
+
     /**
      * Deserializes a Thrift struct using the specified protocol.
      * 
@@ -108,13 +132,7 @@ public class ThriftUtils {
     public static <T> void read(TProtocol iprot, T object) throws TException {
         iprot.readStructBegin();
         
-        Map<Short, Field> fields = new HashMap<Short, Field>();
-        for (Field field : getFields(object.getClass())) {
-            ThriftField desc = field.getAnnotation(ThriftField.class);
-            if (desc != null) {
-                fields.put(desc.id(), field);
-            }
-        }
+        Map<Short, Field> fields = getFieldMap(object.getClass());
 
         while (true) {
             TField field = iprot.readFieldBegin();
