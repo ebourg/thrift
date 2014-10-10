@@ -70,7 +70,7 @@ public class ThriftUtils {
      * @param cls    the class of the object
      * @throws TException
      */
-    public static Object read(TProtocol iprot, Class cls) throws TException {
+    public static Object read(TProtocol iprot, Class<?> cls) throws TException {
         try {
             if (String.class.equals(cls)) {
                 return iprot.readString();
@@ -90,13 +90,16 @@ public class ThriftUtils {
                 }
             } else if (Boolean.class.equals(cls)) {
                 return iprot.readBool();
+            } else if (cls.isEnum()) {
+                int value = iprot.readI32();
+                return cls.getMethod("findByValue", int.class).invoke(null, value);
             } else {
                 Object obj = cls.newInstance();
                 read(iprot, obj);
                 return obj;
             }
         } catch (Exception e) {
-            throw new TException(e);
+            throw new TException("Couldn't read " + cls + " instance", e);
         }
     }
 
@@ -376,7 +379,7 @@ public class ThriftUtils {
                                 oprot.writeMapBegin(tmap);
                                 Set<Map.Entry> entries = map.entrySet();
                                 for (Map.Entry entry : entries) {
-                                    write(oprot, entry.getKey());
+                                    write(oprot, entry.getKey()); // NPE if key is null
                                     write(oprot, entry.getValue());
                                 }
                                 
